@@ -224,10 +224,91 @@
       h1 { font-size: 24px; }
       .add-form { padding-left: 14px; }
     }
+
+    /* ---------- หน้าล็อกอิน ---------- */
+    .auth h1 { text-align: center; }
+    .auth .sub { margin: -16px 0 0; text-align: center; color: var(--muted); }
+    .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--input-bg); }
+    .tabs button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 999px;
+      background: none;
+      font: inherit;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tabs button.active { background: #fff; color: var(--text); box-shadow: 0 2px 8px rgba(123, 92, 255, 0.15); }
+    .auth form { display: flex; flex-direction: column; gap: 12px; }
+    .auth input {
+      padding: 14px 18px;
+      border-radius: 16px;
+      border: 1.5px solid var(--line);
+      background: var(--input-bg);
+      font: inherit;
+      font-size: 16px;
+      color: var(--text);
+      outline: none;
+    }
+    .auth input:focus { border-color: var(--pink); }
+    .primary-btn {
+      padding: 14px;
+      border: none;
+      border-radius: 16px;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      box-shadow: 0 8px 18px rgba(255, 79, 154, 0.3);
+      cursor: pointer;
+    }
+    .primary-btn:disabled { opacity: 0.6; cursor: wait; }
+    .notice { margin: 0; padding: 12px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; }
+    .notice.error { background: #FFE6EC; color: #C2255C; }
+    .notice.ok { background: #E3FAF1; color: #0E9F6E; }
+
+    /* ---------- แถบบัญชี + นำเข้างานเดิม + แจ้งเตือน ---------- */
+    .account { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .link-btn { border: none; background: none; padding: 0; font: inherit; color: var(--pink); font-weight: 600; cursor: pointer; }
+    .import { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: #FFF6E0; font-size: 14px; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      max-width: calc(100% - 32px);
+      padding: 12px 18px;
+      border-radius: 14px;
+      background: var(--text);
+      color: #fff;
+      font-size: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
 </head>
 <body>
-  <main class="card">
+  <!-- ===== หน้าล็อกอิน / สมัครสมาชิก ===== -->
+  <main class="card auth" id="auth-view" hidden>
+    <h1>Todo List</h1>
+    <p class="sub">ล็อกอินเพื่อเก็บงานของคุณไว้ใช้ได้ทุกเครื่อง</p>
+    <div class="tabs">
+      <button type="button" class="active" data-mode="login">เข้าสู่ระบบ</button>
+      <button type="button" data-mode="signup">สมัครสมาชิก</button>
+    </div>
+    <form id="auth-form">
+      <input id="email" type="email" placeholder="อีเมล" autocomplete="email" required>
+      <input id="password" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" minlength="6" autocomplete="current-password" required>
+      <button class="primary-btn" id="auth-btn" type="submit">เข้าสู่ระบบ</button>
+    </form>
+    <p class="notice" id="auth-notice" hidden></p>
+  </main>
+
+  <!-- ===== หน้ารายการงาน ===== -->
+  <main class="card" id="app-view" hidden>
     <div class="header">
       <div>
         <p class="greeting" id="greeting">สวัสดี</p>
@@ -264,8 +345,14 @@
       <button class="add-btn" type="submit" aria-label="เพิ่มงาน">+</button>
     </form>
 
+    <div class="import" id="import-box" hidden>
+      <span id="import-text"></span>
+      <button class="link-btn" id="import-btn" type="button">นำเข้า</button>
+    </div>
+
     <div class="lists">
-      <p class="empty" id="empty">ยังไม่มีงาน เริ่มเพิ่มงานแรกด้านบนเลย</p>
+      <p class="empty" id="loading">กำลังโหลดงาน...</p>
+      <p class="empty" id="empty" hidden>ยังไม่มีงาน เริ่มเพิ่มงานแรกด้านบนเลย</p>
       <div class="celebrate" id="celebrate">ทำครบทุกงานแล้ว เก่งมาก! พักผ่อนให้เต็มที่นะ</div>
       <section id="todo-section">
         <h2 class="section-title" id="todo-title"></h2>
@@ -276,9 +363,21 @@
         <ul id="done-list"></ul>
       </section>
     </div>
+
+    <div class="account">
+      <span id="user-email"></span> · <button class="link-btn" id="logout-btn" type="button">ออกจากระบบ</button>
+    </div>
   </main>
 
+  <div class="toast" id="toast" hidden></div>
+
   <script>
+    // ================= ตั้งค่า Supabase =================
+    // ค่าจาก Supabase โปรเจกต์ todo-list (Project URL + publishable key)
+    // ทั้งสองค่านี้ใส่ในหน้าเว็บได้ ไม่ใช่ความลับ — ความปลอดภัยมาจาก Row Level Security ใน schema.sql
+    const SUPABASE_URL = "https://bzxgvnakjbiolcsednqn.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_zPqb5JBxk1jEMDTKQE8Aug_W8Hhmuf4";
+
     // หมวดหมู่งาน: รหัส -> [ชื่อที่แสดง, สีพื้นป้าย, สีตัวอักษร]
     const CATEGORIES = {
       learn: ["การเรียนรู้", "#E6F0FF", "#2563EB"],
@@ -300,27 +399,22 @@
       "คู่แข่งคนเดียวที่ต้องชนะ คือตัวเราเมื่อวาน",
     ];
 
-    // ---------- เก็บข้อมูลในเบราว์เซอร์ (localStorage) ----------
-    // งานจะอยู่ในเบราว์เซอร์ของแต่ละคน คนอื่นที่เปิดเว็บจะไม่เห็นงานของเรา
-    const STORAGE_KEY = "todos";
+    const $ = id => document.getElementById(id);
+    const configured = !SUPABASE_URL.startsWith("YOUR_");
+    const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-    function loadTodos() {
-      try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      } catch {
-        return [];
-      }
+    let todos = [];
+    let currentUser = null;
+
+    // ---------- แจ้งเตือนสั้นๆ ด้านล่างจอ ----------
+    let toastTimer;
+    function toast(text) {
+      const el = $("toast");
+      el.textContent = text;
+      el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => (el.hidden = true), 4000);
     }
-
-    function saveTodos() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-      } catch {
-        // บางเบราว์เซอร์ (เช่นโหมดส่วนตัว) ไม่ให้บันทึก — เว็บยังใช้ได้ แต่ปิดแล้วงานจะหาย
-      }
-    }
-
-    let todos = loadTodos();
 
     // วันที่แบบ "2026-10-10" ตามเวลาเครื่อง
     function dayKey(d) {
@@ -352,7 +446,7 @@
     // ---------- สร้างแถวงาน 1 แถว ----------
     const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 
-    function renderItem(todo, index, isNew) {
+    function renderItem(todo, isNew) {
       const [label, bg, fg] = CATEGORIES[todo.category] || CATEGORIES.other;
       const li = document.createElement("li");
       if (todo.done) li.classList.add("done");
@@ -362,7 +456,7 @@
       btn.className = "item";
       btn.type = "button";
       btn.innerHTML = `<span class="check">${CHECK_SVG}</span>`;
-      btn.addEventListener("click", () => toggle(index));
+      btn.addEventListener("click", () => toggle(todo));
 
       const body = document.createElement("span");
       body.className = "body";
@@ -381,55 +475,165 @@
     }
 
     // ---------- วาดหน้าจอใหม่ทั้งหมดจากข้อมูล ----------
-    function render(newIndex = -1) {
+    function render(newId = null) {
       const total = todos.length;
       const done = todos.filter(t => t.done).length;
 
-      document.getElementById("streak").textContent = calcStreak();
-      document.getElementById("message").textContent = progressMessage(done, total);
-      document.getElementById("count").textContent = `${done}/${total}`;
-      document.getElementById("bar").style.width = `${total ? (done * 100) / total : 0}%`;
+      $("streak").textContent = calcStreak();
+      $("message").textContent = progressMessage(done, total);
+      $("count").textContent = `${done}/${total}`;
+      $("bar").style.width = `${total ? (done * 100) / total : 0}%`;
 
-      const todoList = document.getElementById("todo-list");
-      const doneList = document.getElementById("done-list");
-      todoList.replaceChildren();
-      doneList.replaceChildren();
-      todos.forEach((t, i) => (t.done ? doneList : todoList).append(renderItem(t, i, i === newIndex)));
+      $("todo-list").replaceChildren();
+      $("done-list").replaceChildren();
+      for (const t of todos) $(t.done ? "done-list" : "todo-list").append(renderItem(t, t.id === newId));
 
-      document.getElementById("todo-title").textContent = `ต้องทำวันนี้ · ${total - done}`;
-      document.getElementById("done-title").textContent = `ทำสำเร็จแล้ว · ${done}`;
-      document.getElementById("empty").hidden = total !== 0;
-      document.getElementById("celebrate").hidden = !(total > 0 && done === total);
-      document.getElementById("todo-section").hidden = done === total;
-      document.getElementById("done-section").hidden = done === 0;
+      $("todo-title").textContent = `ต้องทำวันนี้ · ${total - done}`;
+      $("done-title").textContent = `ทำสำเร็จแล้ว · ${done}`;
+      $("loading").hidden = true;
+      $("empty").hidden = total !== 0;
+      $("celebrate").hidden = !(total > 0 && done === total);
+      $("todo-section").hidden = done === total;
+      $("done-section").hidden = done === 0;
     }
 
-    function toggle(index) {
-      const todo = todos[index];
-      todo.done = !todo.done;
-      if (todo.done) todo.done_at = dayKey(new Date());
-      else delete todo.done_at;
-      saveTodos();
+    // ================= ฐานข้อมูล =================
+    async function loadTodos() {
+      $("loading").hidden = false;
+      const { data, error } = await db.from("todos").select("*").order("created_at");
+      if (error) {
+        $("loading").textContent = "โหลดงานไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง";
+        return;
+      }
+      todos = data;
       render();
     }
 
+    async function addTodo(title, category) {
+      const { data, error } = await db.from("todos").insert({ title, category }).select().single();
+      if (error) return toast("เพิ่มงานไม่สำเร็จ ลองอีกครั้งนะ");
+      todos.push(data);
+      render(data.id);
+    }
+
+    // ติ๊กทันทีให้รู้สึกเร็ว แล้วค่อยบันทึก ถ้าบันทึกไม่ได้จะย้อนกลับ
+    async function toggle(todo) {
+      const before = { done: todo.done, done_at: todo.done_at };
+      todo.done = !todo.done;
+      todo.done_at = todo.done ? dayKey(new Date()) : null;
+      render();
+      const { error } = await db.from("todos").update({ done: todo.done, done_at: todo.done_at }).eq("id", todo.id);
+      if (error) {
+        Object.assign(todo, before);
+        render();
+        toast("บันทึกไม่สำเร็จ ลองอีกครั้งนะ");
+      }
+    }
+
+    // ---------- นำเข้างานเดิมที่เคยเก็บในเบราว์เซอร์ (เวอร์ชันก่อนมีฐานข้อมูล) ----------
+    function oldLocalTodos() {
+      try {
+        return JSON.parse(localStorage.getItem("todos")) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function showImportBox() {
+      const old = oldLocalTodos();
+      $("import-box").hidden = old.length === 0;
+      $("import-text").textContent = `พบงานเดิมในเบราว์เซอร์นี้ ${old.length} งาน`;
+    }
+
+    $("import-btn").addEventListener("click", async () => {
+      const rows = oldLocalTodos().map(t => ({
+        title: String(t.title).slice(0, 200),
+        category: CATEGORIES[t.category] ? t.category : "other",
+        done: !!t.done,
+        done_at: t.done ? t.done_at || null : null,
+      }));
+      const { error } = await db.from("todos").insert(rows);
+      if (error) return toast("นำเข้าไม่สำเร็จ ลองอีกครั้งนะ");
+      try { localStorage.removeItem("todos"); } catch {}
+      $("import-box").hidden = true;
+      toast(`นำเข้า ${rows.length} งานแล้ว`);
+      loadTodos();
+    });
+
+    // ================= ล็อกอิน / สมัครสมาชิก =================
+    let mode = "login";
+
+    function notice(text, kind = "error") {
+      const el = $("auth-notice");
+      el.textContent = text;
+      el.className = `notice ${kind}`;
+      el.hidden = !text;
+    }
+
+    for (const tab of document.querySelectorAll(".tabs button")) {
+      tab.addEventListener("click", () => {
+        mode = tab.dataset.mode;
+        document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === tab));
+        $("auth-btn").textContent = mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก";
+        $("password").autocomplete = mode === "login" ? "current-password" : "new-password";
+        notice("");
+      });
+    }
+
+    function authErrorText(error) {
+      const msg = error.message || "";
+      if (/invalid login/i.test(msg)) return "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+      if (/not confirmed/i.test(msg)) return "ยังไม่ได้ยืนยันอีเมล กรุณากดลิงก์ในอีเมลที่เราส่งไปก่อน";
+      if (/already registered/i.test(msg)) return "อีเมลนี้สมัครไว้แล้ว ลองเข้าสู่ระบบแทน";
+      if (/password/i.test(msg)) return "รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร";
+      if (/rate limit/i.test(msg)) return "ลองบ่อยเกินไป รอสักครู่แล้วลองใหม่";
+      return "เกิดข้อผิดพลาด ลองอีกครั้งนะ";
+    }
+
+    $("auth-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const email = $("email").value.trim();
+      const password = $("password").value;
+      $("auth-btn").disabled = true;
+      notice("");
+      if (mode === "login") {
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) notice(authErrorText(error));
+      } else {
+        const { data, error } = await db.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: location.origin + location.pathname },
+        });
+        if (error) notice(authErrorText(error));
+        else if (!data.session) notice("สมัครสำเร็จ! เปิดอีเมลแล้วกดลิงก์ยืนยัน จากนั้นกลับมาเข้าสู่ระบบ", "ok");
+      }
+      $("auth-btn").disabled = false;
+    });
+
+    $("logout-btn").addEventListener("click", () => db.auth.signOut());
+
+    // สลับหน้าตามสถานะล็อกอิน
+    function showView(user) {
+      $("auth-view").hidden = !!user;
+      $("app-view").hidden = !user;
+    }
+
     // ---------- เมนูหมวดหมู่ ----------
-    const select = document.getElementById("category");
+    const select = $("category");
     for (const [key, [label]] of Object.entries(CATEGORIES)) {
       select.add(new Option(label, key, key === "other", key === "other"));
     }
 
     // ---------- เพิ่มงาน ----------
-    document.getElementById("add-form").addEventListener("submit", e => {
+    $("add-form").addEventListener("submit", async e => {
       e.preventDefault();
-      const input = document.getElementById("title");
+      const input = $("title");
       const title = input.value.trim();
       if (!title) return;
-      todos.push({ title, done: false, category: select.value });
-      saveTodos();
-      render(todos.length - 1);
       input.value = "";
       input.focus();
+      await addTodo(title, select.value);
     });
 
     // ---------- คำทักทาย วันที่ และคำคม ----------
@@ -437,11 +641,34 @@
     const h = now.getHours();
     const hello = h < 12 ? "สวัสดีตอนเช้า" : h < 17 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น";
     const dateText = now.toLocaleDateString("th-TH", { weekday: "short", day: "numeric", month: "short" });
-    document.getElementById("greeting").textContent = `${hello} · ${dateText}`;
+    $("greeting").textContent = `${hello} · ${dateText}`;
     const dayNumber = Math.floor((now - now.getTimezoneOffset() * 60000) / 86400000);
-    document.getElementById("quote").textContent = QUOTES[dayNumber % QUOTES.length];
+    $("quote").textContent = QUOTES[dayNumber % QUOTES.length];
 
-    render();
+    // ---------- เริ่มต้น ----------
+    if (!configured) {
+      showView(null);
+      $("auth-form").hidden = true;
+      document.querySelector(".tabs").hidden = true;
+      notice("ยังไม่ได้ตั้งค่า Supabase — ใส่ SUPABASE_URL และ SUPABASE_ANON_KEY ในไฟล์ index.html");
+    } else {
+      db.auth.onAuthStateChange((event, session) => {
+        const user = session?.user ?? null;
+        showView(user);
+        if (user && user.id !== currentUser?.id) {
+          currentUser = user;
+          $("user-email").textContent = user.email;
+          // รอให้ระบบล็อกอินทำงานเสร็จก่อนค่อยดึงข้อมูล
+          setTimeout(() => {
+            loadTodos();
+            showImportBox();
+          });
+        } else if (!user) {
+          currentUser = null;
+          todos = [];
+        }
+      });
+    }
   </script>
 </body>
 </html>
